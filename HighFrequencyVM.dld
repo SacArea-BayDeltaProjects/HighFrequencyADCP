@@ -85,13 +85,13 @@ Const SeeAllVel = True
 'Port constants to determine locations on CR1000
 'in this preliminary version it's assumed that the CDMA uses SW12 no 1 on both dataloggers
 '-------------------------------------------------------------------------------------------------------------------------------------------
-  Const AdcpPort = Com1
-  Const VMSwitchPort = 4 'only used if not using sw12
-  Const PS1Com3 = 3
-  Const PS1Com5 = 5
-  Const PS2Com3 = 3
-  Const PS2Com5 = 5
-  Const BBLCom7 =7
+  Const AdcpPort = ComC1
+  Const VMSwitchPort = U4
+  Const PS1Com3 = U3
+  Const PS1Com5 = U5
+  Const PS2Com3 = U3
+  Const PS2Com5 = U5
+  Const BBLCom7 = U7
     
 'Declare Constants
 Const VelocityScaleWater = 1/304.8 'converts mm/sec to ft/sec
@@ -1166,9 +1166,9 @@ Sub GetStartup
   HighMeas = No 'above rating flag
   VMLowMemVal = 0
   If IsCDMANClosed Then
-      SW12(0) 'turn on telemetery if there is a Normally closed relay present.
+      SW12(1,0) 'turn on telemetery if there is a Normally closed relay present.
   Else
-      SW12(1) 'turn on telemetery if there's no NC relay present
+      SW12(1,1) 'turn on telemetery if there's no NC relay present
   EndIf
   IsCDMAOn = Yes
 EndSub
@@ -1233,20 +1233,20 @@ Sub CdmaCheck
   Select Case IsCDMANClosed
   Case Yes'if relay exists
     If KeepCDMAon = Yes Then 'if want CDMA on
-        SW12(0)
+        SW12(1,0)
       IsCDMAOn = Yes
       EndIf
   Case No 'if relay does not exist
     If KeepCDMAon = Yes Then 'want CDMA to stay on
-        SW12(1)
+        SW12(1,1)
       IsCDMAOn = Yes
       EndIf
   EndSelect
   If CycleCdmaPwr = Yes Then
     If IsCDMANClosed Then
-      SW12(1)
+      SW12(1,1)
     Else
-        SW12(0)
+        SW12(1,0)
     EndIf  'manual cycle power Open the circuit to the CDMA
     IsCDMAOn = No
     CycleCdmaPwr = No
@@ -1261,9 +1261,9 @@ Sub CdmaCheck
     CdmaScans = CdmaScans + 1
     If (CdmaScans >= HrsCdmaOff * (FastLoopInterval * 4)) AND (EventCDMAFlag = No) Then 'Fastloop interval is no of Subscans per 15 min so * 4 is scans per hour
       If IsCDMANClosed Then
-          SW12(1)
+          SW12(1,1)
       Else
-          SW12(0)
+          SW12(1,0)
       EndIf  'cycle cdma off after 4 hours (Open the Circuit to the CDMA)
       IsCDMAOn = No
       CDMAFailure = Yes
@@ -1277,42 +1277,42 @@ EndSub
 'This subroutine is primarily used for 'expert' operators to issue command changes to the ADCP.  As written, only one command at a time can be issued from the
 'user interface.  The ADCP echos and responsed are viewed from the "banner", "warning" and "CS" response variables. This capability is not available from the
 'keypad, and can only be used from loggernet! Because of CR1000 limitations, the ADCP must have it's power cycled to simulate the RDI "Break" signal!
-Sub (SendSetup)
-  If (SendCMD) Then
-    Banner = ""
-    Warning = ""
-    CSCmd = ""
-    If CMD = "" Then
-      SendCMD = False
-      ExitSub
-    EndIf
-    SerialFlush (AdcpPort)
-    'Turn Power on and off to ADCP
-    Call CycleVMPower
-    Call OpenADCPPort
-    ''SerialOut (COMRS232,"+++","",0,100)'send alt break command
-    Delay (1,1,Sec)'wait for reply
-    SerialIn (Banner,AdcpPort,500,">",200)'get banner from ADCP
-    'SerialIn (Prompt,AdcpPort,100,13,100)'ge
-    SerialFlush (AdcpPort)
-    ''send commands to HADCP
-    Delay (1,1,Sec)'wait for reply
-    'send a command
-    SerialOut (AdcpPort,"+++" + CHR(13) + CHR(10),"",0,100)'Send
-    SerialIn (Banner,AdcpPort,500,">",200)'get banner from ADCP
-    SerialIn (Prompt,AdcpPort,100,-1,100)
-    SerialFlush (AdcpPort)
-    Delay (1,500,mSec)'wait for reply
-    SerialOut (AdcpPort,CMD + CHR(13) + CHR(10),"",0,100)'Send
-    SerialIn (Warning,AdcpPort,150,-1,2000)'Get Warning (if any) from ADCP
-    SerialFlush (AdcpPort)
-    SerialOut (AdcpPort,"CS" + CHR(13) + CHR(10),"",0,100)'CS command to start pinging
-    SerialIn (CSCmd,AdcpPort,100,-1,100) 'get echo of CS command
-    SerialFlush (AdcpPort)
-    SendCMD = False
-    Call EraseWH
-  EndIf
-EndSub
+'Sub (SendSetup)
+'  If (SendCMD) Then
+'    Banner = ""
+'    Warning = ""
+'    CSCmd = ""
+'    If CMD = "" Then
+'      SendCMD = False
+'      ExitSub
+'    EndIf
+'    SerialFlush (AdcpPort)
+'    'Turn Power on and off to ADCP
+'    Call CycleVMPower
+'    Call OpenADCPPort
+'    ''SerialOut (COMRS232,"+++","",0,100)'send alt break command
+'    Delay (1,1,Sec)'wait for reply
+'    SerialIn (Banner,AdcpPort,500,">",200)'get banner from ADCP
+'    'SerialIn (Prompt,AdcpPort,100,13,100)'ge
+'    SerialFlush (AdcpPort)
+'    ''send commands to HADCP
+'    Delay (1,1,Sec)'wait for reply
+'    'send a command
+'    SerialOut (AdcpPort,"+++" + CHR(13) + CHR(10),"",0,100)'Send
+'    SerialIn (Banner,AdcpPort,500,">",200)'get banner from ADCP
+'    SerialIn (Prompt,AdcpPort,100,-1,100)
+'    SerialFlush (AdcpPort)
+'    Delay (1,500,mSec)'wait for reply
+'    SerialOut (AdcpPort,CMD + CHR(13) + CHR(10),"",0,100)'Send
+'    SerialIn (Warning,AdcpPort,150,-1,2000)'Get Warning (if any) from ADCP
+'    SerialFlush (AdcpPort)
+'    SerialOut (AdcpPort,"CS" + CHR(13) + CHR(10),"",0,100)'CS command to start pinging
+'    SerialIn (CSCmd,AdcpPort,100,-1,100) 'get echo of CS command
+'    SerialFlush (AdcpPort)
+'    SendCMD = False
+'    Call EraseWH
+'  EndIf
+'EndSub
 'Open ADCP port
 '----------------------------------------------
 Sub OpenADCPPort
