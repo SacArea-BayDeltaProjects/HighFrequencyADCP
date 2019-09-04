@@ -1,16 +1,15 @@
-'CR1000 Series Datalogger
-'Adapted from USGS Sacramento HydroInterface group program version 4.22
-'Original authors Michael Simpson, Trevor Violoete, Jim Derose, and Mark Inc, USGS
+'CR6 Series Datalogger
+'Adapted from USGS Sacramento Hydrodynamics group program version 4.22
+'Original authors Michael Simpson, Trevor Violette, Jim Derose, and Mark Inc, USGS
 'Program Version Date
-Const ProgramVersionDate = 20190822
-Const ProgramVersion = "P1.00"
-'Last Modified by: Mark Inc
-'NOTE! THIS PROGRAM WILL NOT COMPILE ON CR1000 OS 28 or EARLIER!
+Const ProgramVersionDate = 20190904
+Const ProgramVersion = "P2.00"
+'Last Modified by: Trevor Violette
 
 '-----------------IMPORTANT IMPORTANT-----------------------------------------------
 'BEFORE COMPILING:
 ' 1 SET DLD DATALOGGER TYPE IN TOOLS MENU FOR THE TARGET DATALOGGER
-' 2 CHOOSE COSTOMIZE CONSTANTS IN TOOLS MENU, SELECT PROPER CONSTANTS FOR THE TARGET STATION
+' 2 CHOOSE CUSTOMIZE CONSTANTS IN TOOLS MENU, SELECT PROPER CONSTANTS FOR THE TARGET STATION
 ' 3 CHOOSE CONDITIONAL COMPILE AND SAVE IN THE COMPILE MENU. RENAME THE FILE WITH STATION ID AND DATE IN FILENAME USING CR6 or CR1 file extension
 ' 4 LOAD THE SAVED FILE INTO THE STATION DATALOGGER OR YOU CAN LOAD THE ORIGINAL DLD FILE IF SPACE PERMITS.
 ' 5 DO NOT USE A MAX232 ADAPTER ON THE CSI/0 (ComME) port
@@ -30,6 +29,7 @@ Const ProgramVersion = "P1.00"
 '20190819 - MRI P0.97 Expanded Beamcheck to handle maxbins instead of just 27. Added single BBLStage sample to data out. Adjusted CDMA power routine. Added timer to GetStage as Bubbler takes a long time to process. May need to move until after ADVM check.
 '20190820 - MRI P0.98 Added ADVM timing and refined debugger table
 '20190822 - MRI P1.00 Altered scan timing so all velocity data is captured prior to bubbler which was causing too large of a delay and skipping scans. Tested in the field with 27 bins and all data looked to be coming in correctly.
+'20190904 - TAV P2.00 Edited and commented out subroutines and variables not necessary for the high frequency VM testing. Set ScanRate at 5 seconds for a starting point
 
 'IMPORTANT - ADCP should be set for 1 minute TE and WP 60.
 
@@ -41,7 +41,7 @@ Const No = False
 '-------------------------------------------------------------------------------------------
 '------------------------------------------------------------------------------------
 'Customize constants explanation:
-' "VMBaud" select baud rate of ADVM. Recommend 38400
+'"VMBaud" select baud rate of ADVM. Recommend 38400
 '"HasVM" Choose if there is a Velocity meter at this station
 '"MaxBins" what is the maximum number of bin the CM is programmed to collect.
 'VMDeadCntMax"  number of scans (1 min) of no VM data before cycling power To the VM (5 To 120)
@@ -70,7 +70,7 @@ Const VMDeadCntMax = 20
 'Min = 5
 'Max = 120
 'Inc = 5
-Const StoreAllToCard = True
+Const StoreAllToCard = False
 'value = True
 'value = False
 Const Debugging = False
@@ -96,7 +96,7 @@ Const SeeAllVel = True
 'Declare Constants
 Const VelocityScaleWater = 1/304.8 'converts mm/sec to ft/sec
 'constants for selecting different stage devices
-Const ScanRate = 60
+Const ScanRate = 5
 Const ScanUnit = 2
 Const FastScanRate = 15
 Const FastScanUnit = 2
@@ -1321,19 +1321,19 @@ EndSub
 #EndIf'end of "If Has VM"
 
 '_________________________Erase WH Recorder___________________________________
-Sub EraseWH
-  If CMD = "RE ErAsE" Then 'If command to erase WH recorder is sent then...
-    RecEraseString = Mid (Warning,23,15)  'Parse string to get "Recorder erased" from response
-  Else
-    RecEraseString = ""
-  EndIf
-  If RecEraseString = "Recorder erased" Then 'if the recorder was successfully erased, flag it in data table
-    RecErased = True
-  EndIf
-  If IfTime (10,1440,min) AND RecErased = True Then 'Reset Recorder erase flag to false at 00:10 (allows time for flag to be written to QAQC table).
-    RecErased = False
-  EndIf
-EndSub
+'Sub EraseWH
+'  If CMD = "RE ErAsE" Then 'If command to erase WH recorder is sent then...
+'    RecEraseString = Mid (Warning,23,15)  'Parse string to get "Recorder erased" from response
+'  Else
+'    RecEraseString = ""
+'  EndIf
+'  If RecEraseString = "Recorder erased" Then 'if the recorder was successfully erased, flag it in data table
+'    RecErased = True
+'  EndIf
+'  If IfTime (10,1440,min) AND RecErased = True Then 'Reset Recorder erase flag to false at 00:10 (allows time for flag to be written to QAQC table).
+'    RecErased = False
+'  EndIf
+'EndSub
 
 '_____________________________Wake VM________________________
 #If HasVM Then
@@ -1456,242 +1456,61 @@ Sub ToggleVMPower
     EndIf
 EndSub
 
-'___________________New Stage Subroutine______________________________
-Sub GetStage
-  Call GetPSPress 'Get SDI-12 data from PS1
-  Call GetPsPress2 'Get SDI-12 data from PS2
-  Call GetBBLstg 'Get SDI-12 data from Accubar
-  UpBeamStg = VMupBeam + UpBeamOffset
-  VMPressStg = VMpressure + VMPressOffset
-  PS1Stg = PsPress1Stg(1) + PS1Offset
-  PS2Stg = PSpress2Stg(1) + PS2Offset
-  BBLstage = BBLstg(1) + BBLOffset
-  BBLUnits=BBLstg(2)
-  
-  Select Case SelStgPrime 
-  Case UPbeam 'User selected Upbeam to be used as Stage
-    If (VMdataIn = Yes AND VMupBeam <> NAN) Then 'If there are data coming in and they are valid
-      StagePrime = UpBeamStg
-      BadStgFlag = No
-    Else 'otherwise flag data as bad
-      BadStgFlag = Yes
-      StagePrime = BadDataIndicator
-    EndIf
-  Case VMpress 'User Selected VM Pressure sensor to be used as stage
-    If (VMdataIn = Yes AND VMpressure <> NAN) Then 'If there are data coming in and they are valid
-      StagePrime = VMPressStg
-      BadStgFlag = No
-    Else ' Otherwise flag data as bad
-      BadStgFlag = Yes
-      StagePrime = BadDataIndicator
-    EndIf
-  Case PSpress 'User selected Pressure sensor 1 to be used as stage
-    If PSPressDataIn = Yes Then
-      StagePrime = PS1Stg
-      BadStgFlag = No
-    Else ' Otherwise flag data as bad
-      BadStgFlag = Yes
-      StagePrime = BadDataIndicator
-    EndIf
-  Case PSpress2 'User selected Pressure Sensor 2 to be used as stage
-    If PSpress2DataIn = Yes Then 'if there are data then
-      StagePrime = PS2Stg
-      BadStgFlag = No
-    Else 'otherwise flag the data as bad
-      BadStgFlag = Yes
-      StagePrime = BadDataIndicator
-    EndIf
-    Case BBL 'User selected Pressure Sensor 2 to be used as stage
-    If BBLDataIn = Yes Then 'if there are data then
-      StagePrime = BBLstage
-      BadStgFlag = No
-    Else 'otherwise flag the data as bad
-      BadStgFlag = Yes
-      StagePrime = BadDataIndicator
-    EndIf
-  EndSelect
-
-  Select Case SelStgSecnd
-  Case UPbeam 'User selected Upbeam to be used as Stage
-    If (VMdataIn = Yes AND VMupBeam <> NAN) Then 'If there are data coming in and they are valid
-      StageSecnd = UpBeamStg
-    Else 'otherwise flag data as bad
-      StageSecnd = BadDataIndicator
-    EndIf
-  Case VMpress 'User Selected VM Pressure sensor to be used as stage
-    If (VMdataIn = Yes AND VMpressure <> NAN) Then 'If there are data coming in and they are valid
-      StageSecnd = VMPressStg
-    Else ' Otherwise flag data as bad
-      StageSecnd = BadDataIndicator
-    EndIf
-  Case PSpress 'User selected Pressure sensor 1 to be used as stage
-    If PSPressDataIn = Yes Then
-      StageSecnd = PS1Stg
-    Else ' Otherwise flag data as bad
-      StageSecnd = BadDataIndicator
-    EndIf
-  Case PSpress2 'User selected Pressure Sensor 2 to be used as stage
-    If PSpress2DataIn = Yes Then 'if there are data then
-      StageSecnd = PS2Stg
-    Else 'otherwise flag the data as bad
-      StageSecnd = BadDataIndicator
-    EndIf
-    Case BBL 'User selected Pressure Sensor 2 to be used as stage
-    If BBLDataIn = Yes Then 'if there are data then
-      StageSecnd = BBLstage
-      BadStgFlag = No
-    Else 'otherwise flag the data as bad
-      BadStgFlag = Yes
-      StageSecnd = BadDataIndicator
-    EndIf
-  EndSelect
-
-  'now check to make sure primary stage is within range
-  'this is the stage used to calculate flows
-  If BadStgFlag = No Then 'if stage data is still good then...
-    'lets check to see if within the expected range
-    If (StagePrime > MaxExpStg) OR (StagePrime < MinExpStg) Then 'if out of range
-      BadStgFlag = Yes 'set bad stage flag to true
-      StagePrime = BadDataIndicator
-      BadStgCount = BadStgCount + 1 'incriment bad stage counter  
-    EndIf
-  Else 'if Bad Stage Flag was already true (from above code)
-    BadStgCount = BadStgCount + 1 'incriment bad stage counter
-  EndIf
-  'which stage insturment type being used will be stored in the output files
-  StgSelect = SelStgPrime + ":" + SelStgSecnd 'indicates stage type being used
-EndSub
-
-'This allows you to enter a stage value from a gage and have the offsets changed automatically. I find that with the time delay, if the stage is changing at all, it frequently causes more problems than just calculating the new offsets manually.
-'If site is in a stable area you have uncomment this area
-'Sub TrueStage
-'  'Now lets get correct offsets for each instrument to produce an accurate "Stage"
-'  If TrueUpBeamStg = BadDataIndicator AND TrueVMPressStg = BadDataIndicator AND TruePS1Stg = BadDataIndicator AND TruePS2Stg = BadDataIndicator AND TrueSondeStg = BadDataIndicator Then
-'    ExitSub
-'  EndIf
-'  If ((TrueUpBeamStg <> BadDataIndicator) AND (VMupBeam <> BadDataIndicator)) Then ' if user types in a reference stage for Upbeam then
-'    UpBeamOffset = TrueUpBeamStg-VMupBeam ' get offset for UpBeam
-'  EndIf 'Otherwise do nothing
-'  If ((TrueVMPressStg <> BadDataIndicator) AND (VMpressure <> BadDataIndicator)) Then 'if user types in a reference stage VM Pressure sensor then
-'    VMPressOffset = TrueVMPressStg-VMpressure 'get offset for VM pressure sensor
-'  EndIf 'otherwise do nothing
-'  If ((TruePS1Stg <> BadDataIndicator) AND (PsPress1Stg(1) <> BadDataIndicator)) Then 'if user types in a reference stage for Pressure sensor1 then
-'    PS1Offset = TruePS1Stg-PsPress1Stg(1) 'Get offset for pressure sensor 1
-'  EndIf 'Otherwise do nothing
-'  If ((TruePS2Stg <> BadDataIndicator) AND (PSpress2Stg(1) <> BadDataIndicator)) Then 'if user types in a reference stage for pressure sensor2 then
-'    PS2Offset = TruePS2Stg - PSpress2Stg(1)
-'  EndIf 'Otherwise do nothing
-'  #If WqSonde <> "NONE" Then
-'    If ((TrueSondeStg <> BadDataIndicator) AND (WqDepthFt <> BadDataIndicator)) Then 'if user types in a reference stage for YSI then
-'      SondeOffset = TrueSondeStg - WqDepthFt
-'    EndIf
-'  #EndIf
-'  'Otherwise do nothing
-'EndSub
-
-'______________Stage Difference Routine________________________
-'Used to produce a graph in RTMC to see the difference between stage values at a finer scale, indication of drifting
-Sub StageDiff
-  StgDiff = StagePrime - StageSecnd
-  Round (StgDiff,3)
-EndSub
-
-'_____________________________________Accubar Bubbler Subroutine_______________________________
-Sub GetBBLstg
-    SDI12Recorder (BBLstg(),BBLCom7,BBLAddr,"M!",1.0,0)
-  If BBLstg(1) = NAN Then 'if no data commes in
-    BBLDataIn = No
-  Else 'if there is PS Pressure data
-    BBLDataIn = Yes
-  EndIf
-EndSub
-
-
-'_____________________________________PsPressure Subroutine_______________________________
-Sub GetPsPress
-  Select Case PSPressPort
-  Case 3
-    SDI12Recorder (PsPress1Stg(),PS1Com3,PSPressAddr,"M!",1.0,0)
-  Case 5
-    SDI12Recorder (PsPress1Stg(),PS1Com5,PSPressAddr,"M!",1.0,0)
-  EndSelect
-  If PsPress1Stg(1) = NAN Then 'if no data commes in
-    PSPressDataIn = No
-  Else 'if there is PS Pressure data
-    PSPressDataIn = Yes
-  EndIf
-EndSub
-
-'__________________________________Pressure Sensor 2 Subroutine______________________________
-Sub GetPSpress2
-  Select Case PSpress2Port
-  Case 3
-    SDI12Recorder (PSpress2Stg(),PS2Com3,PSpress2Addr,"M!",1.0,0)
-  Case 5
-    SDI12Recorder (PSpress2Stg(),PS2Com5,PSpress2Addr,"M!",1.0,0)
-  EndSelect
-  If PSpress2Stg(1) = NAN Then 'if no data comes in
-    PSpress2DataIn = No
-  Else 'if there is Float Recorder data
-    PSpress2DataIn = Yes
-  EndIf
-EndSub
-
 '__________________________Get Instrument Serial Numbers_________________
-Sub GetSN
-  If (ModDay > 79270) AND (ModDay < 79390) AND RecCalibData = False Then 'if 2200hrs + 1-3 minutes and not Calbrating then get serial numbers of all
-    AdcpSN = AdcpSN
-    If AdcpSN <> InitialAdcpSN Then
-      NewADCP = True
-      InitialAdcpSN = AdcpSN 'set the new s/n to initial
-    Else
-      NewADCP = False
-    EndIf
-    Select Case PSPressPort
-    Case 3
-      SDI12Recorder (PS1SN,PS1Com3,PSPressAddr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from pressure sensors.
-      If PS1SN <> InitialPS1SN Then
-        NewPS1 = True
-        InitialPS1SN = PS1SN 'Set the new sn to initial
-      Else
-        NewPS1 = False
-      EndIf  'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
-    Case 5
-      SDI12Recorder (PS1SN,PS1Com5,PSPressAddr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from pressure sensors.
-      If PS1SN <> InitialPS1SN Then
-        NewPS1 = True
-        InitialPS1SN = PS1SN 'Set the new sn to initial
-      Else
-        NewPS1 = False
-      EndIf                                      'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
-    EndSelect
-    Select Case PSpress2Port
-    Case 3
-      SDI12Recorder (PS2SN,PS2Com3,PSpress2Addr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from pressure sensors.
-      If PS2SN <> InitialPS2SN Then
-        NewPS2 = True
-        InitialPS2SN = PS2SN 'Set the new sn to initial
-      Else
-        NewPS2 = False
-      EndIf                                     'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
-    Case 5
-      SDI12Recorder (PS2SN,PS2Com5,PSpress2Addr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from pressure sensors.
-      If PS2SN <> InitialPS2SN Then
-        NewPS2 = True
-        InitialPS2SN = PS2SN 'Set the new sn to initial
-      Else
-        NewPS2 = False
-      EndIf                                     'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
-    EndSelect
-     SDI12Recorder (BBLSN,BBLCom7,BBLAddr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from bubbler.
-      If BBLSN <> InitialBBLSN Then
-        NewBBL = True
-        InitialBBLSN = BBLSN 'Set the new sn to initial
-      Else
-        NewBBL = False
-      EndIf  'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
-  EndIf 'end if midnight
-EndSub
+'Sub GetSN
+'  If (ModDay > 79270) AND (ModDay < 79390) AND RecCalibData = False Then 'if 2200hrs + 1-3 minutes and not Calbrating then get serial numbers of all
+'    AdcpSN = AdcpSN
+'    If AdcpSN <> InitialAdcpSN Then
+'      NewADCP = True
+'      InitialAdcpSN = AdcpSN 'set the new s/n to initial
+'    Else
+'      NewADCP = False
+'    EndIf
+'    Select Case PSPressPort
+'    Case 3
+'      SDI12Recorder (PS1SN,PS1Com3,PSPressAddr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from pressure sensors.
+'      If PS1SN <> InitialPS1SN Then
+'        NewPS1 = True
+'        InitialPS1SN = PS1SN 'Set the new sn to initial
+'      Else
+'        NewPS1 = False
+'      EndIf  'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
+'    Case 5
+'      SDI12Recorder (PS1SN,PS1Com5,PSPressAddr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from pressure sensors.
+'      If PS1SN <> InitialPS1SN Then
+'        NewPS1 = True
+'        InitialPS1SN = PS1SN 'Set the new sn to initial
+'      Else
+'        NewPS1 = False
+'      EndIf                                      'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
+'    EndSelect
+'    Select Case PSpress2Port
+'    Case 3
+'      SDI12Recorder (PS2SN,PS2Com3,PSpress2Addr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from pressure sensors.
+'      If PS2SN <> InitialPS2SN Then
+'        NewPS2 = True
+'        InitialPS2SN = PS2SN 'Set the new sn to initial
+'      Else
+'        NewPS2 = False
+'      EndIf                                     'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
+'    Case 5
+'      SDI12Recorder (PS2SN,PS2Com5,PSpress2Addr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from pressure sensors.
+'      If PS2SN <> InitialPS2SN Then
+'        NewPS2 = True
+'        InitialPS2SN = PS2SN 'Set the new sn to initial
+'      Else
+'        NewPS2 = False
+'      EndIf                                     'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
+'    EndSelect
+'     SDI12Recorder (BBLSN,BBLCom7,BBLAddr,"I!",1.0,0) '"I!" command gets brand, model, serial number, firmware, etc. from bubbler.
+'      If BBLSN <> InitialBBLSN Then
+'        NewBBL = True
+'        InitialBBLSN = BBLSN 'Set the new sn to initial
+'      Else
+'        NewBBL = False
+'      EndIf  'didn't parse the string to only retrieve S/N because it's useful to know the brand and model.
+'  EndIf 'end if midnight
+'EndSub
 
 '____________________________________Calculates interval for filter loops
 Sub CalcLoopInterval
@@ -2639,45 +2458,45 @@ End Function
   End Sub
 #EndIf
 '__________________________________Calculate Q Subroutine_________________________________
-Sub SubCalcQ 'calculate discharge
-  If CalcQ = Yes Then ' if Q calculations are wanted
-    If Trans = BadDataIndicator Then 'if there is no valid transition point
-      'then use standard velocity rating info for meanvel calculation
-      MeanVel = VelOffset + (VelCoef * IndexVel) + (VelCoef2 * IndexVel^2) + (VelCoef3 * IndexVel^3)
-    Else 'if there is a valid transition point
-      If IndexVel >= Trans Then 'if iVel is greater or equal to the transition point
-        'then use upper meanvel rating information
-        MeanVel = UpVelOffset + (UpVelCoef * IndexVel) + (UpVelCoef2 * IndexVel^2) + (UpVelCoef3 * IndexVel^3)
-      ElseIf IndexVel <= Trans Then 'if iVel is less than the transition point
-        'then use lower meanvel rating information
-        MeanVel = LowVelOffset + (LowVelCoef * IndexVel) + (LowVelCoef2 * IndexVel^2) + (LowVelCoef3 * IndexVel^3)
-      EndIf
-    EndIf
-    If BadVelFlag = False AND  BadStgFlag = False Then 'Ok, now if both iVel and Stage are still good, then
-      BadQFlag = False 'then Q data is still good
-      'user enters rating values with keypad
-      Area = StgOffset + (StgCoef*StagePrime) + (StgCoef2 * StagePrime^2)
-      'check to see if iVel data is good
-      Qcfs = Area * MeanVel 'calculate Q
-      If Qcfs = 0 Then 'if calculated Q is exactly zero
-        'then don't believe it (probably no rating data entered)
-        BadQFlag = True 'Q data is now bad, so don't average it
-        BadQCount = BadQCount + 1 'Q is now bad
-        Qcfs = BadDataIndicator
-      EndIf
-    Else 'if stage or velocity were bad, then
-      BadQFlag = True 'Q data is now bad, so don't average it
-      BadQCount = BadQCount + 1 'and increment counter
-      Qcfs = BadDataIndicator
-    EndIf
-  Else ' if Q calculations are not wanted (CalcQ = no)
-    BadQCount = 0
-    Area = NAN
-    MeanVel = NAN
-    Qcfs = 0
-    BadQFlag = True
-  EndIf
-EndSub
+'Sub SubCalcQ 'calculate discharge
+'  If CalcQ = Yes Then ' if Q calculations are wanted
+'    If Trans = BadDataIndicator Then 'if there is no valid transition point
+'      'then use standard velocity rating info for meanvel calculation
+'      MeanVel = VelOffset + (VelCoef * IndexVel) + (VelCoef2 * IndexVel^2) + (VelCoef3 * IndexVel^3)
+'    Else 'if there is a valid transition point
+'      If IndexVel >= Trans Then 'if iVel is greater or equal to the transition point
+'        'then use upper meanvel rating information
+'        MeanVel = UpVelOffset + (UpVelCoef * IndexVel) + (UpVelCoef2 * IndexVel^2) + (UpVelCoef3 * IndexVel^3)
+'      ElseIf IndexVel <= Trans Then 'if iVel is less than the transition point
+'        'then use lower meanvel rating information
+'        MeanVel = LowVelOffset + (LowVelCoef * IndexVel) + (LowVelCoef2 * IndexVel^2) + (LowVelCoef3 * IndexVel^3)
+'      EndIf
+'    EndIf
+'    If BadVelFlag = False AND  BadStgFlag = False Then 'Ok, now if both iVel and Stage are still good, then
+'      BadQFlag = False 'then Q data is still good
+'      'user enters rating values with keypad
+'      Area = StgOffset + (StgCoef*StagePrime) + (StgCoef2 * StagePrime^2)
+'      'check to see if iVel data is good
+'      Qcfs = Area * MeanVel 'calculate Q
+'      If Qcfs = 0 Then 'if calculated Q is exactly zero
+'        'then don't believe it (probably no rating data entered)
+'        BadQFlag = True 'Q data is now bad, so don't average it
+'        BadQCount = BadQCount + 1 'Q is now bad
+'        Qcfs = BadDataIndicator
+'      EndIf
+'    Else 'if stage or velocity were bad, then
+'      BadQFlag = True 'Q data is now bad, so don't average it
+'      BadQCount = BadQCount + 1 'and increment counter
+'      Qcfs = BadDataIndicator
+'    EndIf
+'  Else ' if Q calculations are not wanted (CalcQ = no)
+'    BadQCount = 0
+'    Area = NAN
+'    MeanVel = NAN
+'    Qcfs = 0
+'    BadQFlag = True
+'  EndIf
+'EndSub
 
 '____________________________________Zero all Velocity Meter Arrays__________________________
 #If HasVM = True Then
@@ -2718,121 +2537,121 @@ EndSub
 #EndIf
 '----------------------------------------------------
 'Read variables in from USR file (preserved variables)
-Sub ReadVariables
-  Public PreserveHandle As Long
-  Public PreserveFileLen As Long
-  Public Closeerror
-  PreserveHandle = FileOpen("USR:VariableStore.txt","r",-1) 'open the preserve variable file here
-  Delay (1,30,mSec)
-  PreserveFileLen = FileRead(PreserveHandle,PreserveFile,500)
-  Closeerror = FileClose(PreserveHandle)
-  If PreserveFileLen = 0 Then
-    '    'set error txt
-    ExitSub
-  EndIf
-  Dim InVar(38) As String
-  SplitStr(InVar,PreserveFile,",",38,0)
-  StartBin = InVar(1)
-  EndBin = InVar(2)
-  StartEbbBin = InVar(3)
-  EndEbbBin = InVar(4)
-  StartFldBin = InVar(5)
-  EndFldBin = InVar(6)
-  BiRating = InVar(7)
-  BiRatTran = InVar(8)
-  LowRatVel = InVar(9)
-  HighRatVel = InVar(10)
-  SelStgPrime = InVar(11)
-  SelStgSecnd = InVar(12)
-  UpBeamOffset = InVar(13)
-  VMPressOffset = InVar(14)
-  PS1Offset = InVar(15)
-  PS2Offset = InVar(16)
-  BBLOffset = InVar(17)
-  CalcQ = InVar(18)
-  StgOffset = InVar(19)
-  StgCoef = InVar(20)
-  StgCoef2 = InVar(21)
-  VelOffset = InVar(22)
-  VelCoef = InVar(23)
-  VelCoef2 = InVar(24)
-  VelCoef3 = InVar(25)
-  UpVelOffset = InVar(26)
-  UpVelCoef = InVar(27)
-  UpVelCoef2 = InVar(28)
-  UpVelCoef3 = InVar(29)
-  LowVelOffset = InVar(30)
-  LowVelCoef = InVar(31)
-  LowVelCoef2 = InVar(32)
-  LowVelCoef3 = InVar(33)
-  RangeSource = InVar(34)
-  DucerDepthOffset = InVar(35)
-  isVMNClosed = InVar(36)
-  OneMinConsistent= InVar(37) 'if you want constant 1min data this will keep it on in case of power cycle
-  FlowSign = InVar(38)
-EndSub
-
-'Store Variables to USR File (preserve variables)
-'--------------------------------------------------
-Sub StoreVariables
-  'store variables out
-  Dim Var(38) As String
-  Public SendVarString As String * 500
-  Public VarStringLen As Long
-  Public VarHandle = Long
-  Public Varbytes = Long
-  Public StoreCloseErr As Long
-  Dim VarCnt As Long
-  Var(1) = StartBin
-  Var(2) = EndBin
-  Var(3) = StartEbbBin
-  Var(4) = EndEbbBin
-  Var(5) = StartFldBin
-  Var(6) = EndFldBin
-  Var(7) = BiRating
-  Var(8) = BiRatTran
-  Var(9) = LowRatVel
-  Var(10) = HighRatVel
-  Var(11) = SelStgPrime
-  Var(12) = SelStgSecnd
-  Var(13) = UpBeamOffset
-  Var(14) = VMPressOffset
-  Var(15) = PS1Offset
-  Var(16) = PS2Offset
-  Var(17) = BBLOffset
-  Var(18) = CalcQ
-  Var(19) = StgOffset
-  Var(20) = StgCoef
-  Var(21) = StgCoef2
-  Var(22) = VelOffset
-  Var(23) = VelCoef
-  Var(24) = VelCoef2
-  Var(25) = VelCoef3
-  Var(26) = UpVelOffset
-  Var(27) = UpVelCoef
-  Var(28) = UpVelCoef2
-  Var(29) = UpVelCoef3
-  Var(30) = LowVelOffset
-  Var(31) = LowVelCoef
-  Var(32) = LowVelCoef2
-  Var(33) = LowVelCoef3
-  Var(34) = RangeSource
-  Var(35) = DucerDepthOffset
-  Var(36) = isVMNClosed
-  Var(37) = OneMinConsistent
-  Var(38) = FlowSign
-  'build send string
-  SendVarString = Var(1)
-  For VarCnt = 2 To 38
-    SendVarString = SendVarString + "," + Var(VarCnt)
-  Next VarCnt
-  VarStringLen = Len(SendVarString)
-  VarHandle = FileOpen("USR:VariableStore.txt","w",-1)
-  Delay(1,100,mSec)
-  Varbytes = FileWrite(VarHandle,SendVarString,VarStringLen + 50)
-  StoreCloseErr = FileClose(VarHandle)
-  StoreVariablesFlg = False
-EndSub
+'Sub ReadVariables
+'  Public PreserveHandle As Long
+'  Public PreserveFileLen As Long
+'  Public Closeerror
+'  PreserveHandle = FileOpen("USR:VariableStore.txt","r",-1) 'open the preserve variable file here
+'  Delay (1,30,mSec)
+'  PreserveFileLen = FileRead(PreserveHandle,PreserveFile,500)
+'  Closeerror = FileClose(PreserveHandle)
+'  If PreserveFileLen = 0 Then
+'    '    'set error txt
+'    ExitSub
+'  EndIf
+'  Dim InVar(38) As String
+'  SplitStr(InVar,PreserveFile,",",38,0)
+'  StartBin = InVar(1)
+'  EndBin = InVar(2)
+'  StartEbbBin = InVar(3)
+'  EndEbbBin = InVar(4)
+'  StartFldBin = InVar(5)
+'  EndFldBin = InVar(6)
+'  BiRating = InVar(7)
+'  BiRatTran = InVar(8)
+'  LowRatVel = InVar(9)
+'  HighRatVel = InVar(10)
+'  SelStgPrime = InVar(11)
+'  SelStgSecnd = InVar(12)
+'  UpBeamOffset = InVar(13)
+'  VMPressOffset = InVar(14)
+'  PS1Offset = InVar(15)
+'  PS2Offset = InVar(16)
+'  BBLOffset = InVar(17)
+'  CalcQ = InVar(18)
+'  StgOffset = InVar(19)
+'  StgCoef = InVar(20)
+'  StgCoef2 = InVar(21)
+'  VelOffset = InVar(22)
+'  VelCoef = InVar(23)
+'  VelCoef2 = InVar(24)
+'  VelCoef3 = InVar(25)
+'  UpVelOffset = InVar(26)
+'  UpVelCoef = InVar(27)
+'  UpVelCoef2 = InVar(28)
+'  UpVelCoef3 = InVar(29)
+'  LowVelOffset = InVar(30)
+'  LowVelCoef = InVar(31)
+'  LowVelCoef2 = InVar(32)
+'  LowVelCoef3 = InVar(33)
+'  RangeSource = InVar(34)
+'  DucerDepthOffset = InVar(35)
+'  isVMNClosed = InVar(36)
+'  OneMinConsistent= InVar(37) 'if you want constant 1min data this will keep it on in case of power cycle
+'  FlowSign = InVar(38)
+'EndSub
+'
+''Store Variables to USR File (preserve variables)
+''--------------------------------------------------
+'Sub StoreVariables
+'  'store variables out
+'  Dim Var(38) As String
+'  Public SendVarString As String * 500
+'  Public VarStringLen As Long
+'  Public VarHandle = Long
+'  Public Varbytes = Long
+'  Public StoreCloseErr As Long
+'  Dim VarCnt As Long
+'  Var(1) = StartBin
+'  Var(2) = EndBin
+'  Var(3) = StartEbbBin
+'  Var(4) = EndEbbBin
+'  Var(5) = StartFldBin
+'  Var(6) = EndFldBin
+'  Var(7) = BiRating
+'  Var(8) = BiRatTran
+'  Var(9) = LowRatVel
+'  Var(10) = HighRatVel
+'  Var(11) = SelStgPrime
+'  Var(12) = SelStgSecnd
+'  Var(13) = UpBeamOffset
+'  Var(14) = VMPressOffset
+'  Var(15) = PS1Offset
+'  Var(16) = PS2Offset
+'  Var(17) = BBLOffset
+'  Var(18) = CalcQ
+'  Var(19) = StgOffset
+'  Var(20) = StgCoef
+'  Var(21) = StgCoef2
+'  Var(22) = VelOffset
+'  Var(23) = VelCoef
+'  Var(24) = VelCoef2
+'  Var(25) = VelCoef3
+'  Var(26) = UpVelOffset
+'  Var(27) = UpVelCoef
+'  Var(28) = UpVelCoef2
+'  Var(29) = UpVelCoef3
+'  Var(30) = LowVelOffset
+'  Var(31) = LowVelCoef
+'  Var(32) = LowVelCoef2
+'  Var(33) = LowVelCoef3
+'  Var(34) = RangeSource
+'  Var(35) = DucerDepthOffset
+'  Var(36) = isVMNClosed
+'  Var(37) = OneMinConsistent
+'  Var(38) = FlowSign
+'  'build send string
+'  SendVarString = Var(1)
+'  For VarCnt = 2 To 38
+'    SendVarString = SendVarString + "," + Var(VarCnt)
+'  Next VarCnt
+'  VarStringLen = Len(SendVarString)
+'  VarHandle = FileOpen("USR:VariableStore.txt","w",-1)
+'  Delay(1,100,mSec)
+'  Varbytes = FileWrite(VarHandle,SendVarString,VarStringLen + 50)
+'  StoreCloseErr = FileClose(VarHandle)
+'  StoreVariablesFlg = False
+'EndSub
 
 '_______________________________________________________Calculate a Checksum for the ensemble and extract ensemble checksum ____________________________________
 #If HasVM = True Then
@@ -2957,12 +2776,12 @@ EndSub
       ScanNo = ScanNo + 1
       'Set the baudrates and open the serial ports
       Call OpenADCPPort
-      If GetVariablesFlg = True Then
-        Call ReadVariables
-        GetVariablesFlg = False
-      EndIf
-      If (SendCMD) Then Call SendSetup
-      CMD = ""
+'      If GetVariablesFlg = True Then
+'        Call ReadVariables
+'        GetVariablesFlg = False
+'      EndIf
+'      If (SendCMD) Then Call SendSetup
+'      CMD = ""
       Call ToggleVMPower 'if set to VMpower = yes then ok otherwise turns off VM
       'commented out truestage subroutine. If enabled in subroutine uncomment this
       'Call TrueStage
@@ -2991,7 +2810,7 @@ EndSub
       VMInfoEnd = VMInfoEnd/1000
       VMInfoTotTime = VMInfoEnd-VMInfoStart
       'The following code looks for the incoming data stream,stores the data in an array of longs, and passes the data through
-      'a series of checks.  If those checks fail then the scan is truncated, the ruesulting
+      'a series of checks.  If those checks fail then the scan is truncated, the resulting
       'data is flagged, and the serial port is flushed.  On the next scan the next valid ensemble
       'is read, if there is good data in the buffer then that should be reflected in the output.
       ADCPDone = False
@@ -3030,7 +2849,7 @@ EndSub
           EndIf
           Subscans = Subscans + 1
           If ADCPDone Then ExitFor
-          Delay (1,5,Sec) 'Wait a bit for incoming ensemble, but not more than 10 seconds
+          Delay (1,2,Sec) 'Wait a bit for incoming ensemble, but not more than 4 seconds
         Next
       #EndIf
       VMLoopEnd = Timer(DebugTimer,msec,4)
@@ -3096,12 +2915,12 @@ EndSub
           OneMinCalcEnd = Timer(DebugTimer,msec,4)
           OneMinCalcEnd = OneMinCalcEnd/1000
           OneMinCalcTotTime = OneMinCalcEnd - OneMinCalcStart
-          CalcQStart = Timer(DebugTimer,msec,4)
-          CalcQStart = CalcQStart/1000
-          Call SubCalcQ
-          CalcQEnd = Timer(DebugTimer,msec,4)
-          CalcQEnd = CalcQEnd/1000
-          CalcQTotTime = CalcQEnd-CalcQStart
+'          CalcQStart = Timer(DebugTimer,msec,4)
+'          CalcQStart = CalcQStart/1000
+'          Call SubCalcQ
+'          CalcQEnd = Timer(DebugTimer,msec,4)
+'          CalcQEnd = CalcQEnd/1000
+'          CalcQTotTime = CalcQEnd-CalcQStart
           GetVMMemStart = Timer(DebugTimer,msec,4)
           GetVMMemStart = GetVMMemStart/1000
           GetVMMemEnd = Timer(DebugTimer,msec,4)
@@ -3144,14 +2963,14 @@ EndSub
           WakeUpVM = True
         EndIf
         'used to be before VM loop, moved to after to test avoidance of timing problem.
-      GetStageStart = Timer(DebugTimer,msec,4)
-      GetStageStart = GetStageStart/1000
-      Call GetStage
-      GetStageEnd = Timer(DebugTimer,msec,4)
-      GetStageEnd = GetStageEnd/1000
-      GetStageTotTime = GetStageEnd-GetStageStart
-        Call StageDiff
-        Call GetSN
+'      GetStageStart = Timer(DebugTimer,msec,4)
+'      GetStageStart = GetStageStart/1000
+'      Call GetStage
+'      GetStageEnd = Timer(DebugTimer,msec,4)
+'      GetStageEnd = GetStageEnd/1000
+'      GetStageTotTime = GetStageEnd-GetStageStart
+'        Call StageDiff
+'        Call GetSN
         If SetVMTimeFlg Then
           Call SetVMTime
         EndIf
@@ -3183,7 +3002,7 @@ EndSub
 
       RecAQFlag = False
 
-      If StoreVariablesFlg = true Then Call StoreVariables
+      'If StoreVariablesFlg = true Then Call StoreVariables
      
       AQTabStart = Timer(DebugTimer,msec,4) 'read timer for start time of the AQ table
       AQTabStart = AQTabStart/1000 'convert
